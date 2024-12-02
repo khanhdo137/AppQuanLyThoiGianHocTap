@@ -1,6 +1,5 @@
-// src/screens/VerifyEmailScreen.js
 import React, { useEffect } from 'react';
-import { View, Text, Button, StyleSheet, Alert } from 'react-native';
+import { View, Text, Button, StyleSheet, Alert, ImageBackground } from 'react-native';
 import { auth } from '../services/firebase';
 import { sendEmailVerification } from 'firebase/auth';
 
@@ -37,16 +36,16 @@ const VerifyEmailScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <ImageBackground source={require('../assets/background.png')} style={styles.container}>
       <Text style={styles.text}>Vui lòng kiểm tra email của bạn để xác thực tài khoản.</Text>
       <Button title="Gửi lại email xác thực" onPress={resendVerificationEmail} />
       <Button title="Đăng Nhập" onPress={handleLogout} color="red" />
-    </View>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex:1, justifyContent:'center', alignItems:'center', padding:20 },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   text: { fontSize: 18, marginBottom: 20, textAlign: 'center' },
 });
 

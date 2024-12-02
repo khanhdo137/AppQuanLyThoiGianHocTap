@@ -1,76 +1,115 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Dimensions, Alert, ScrollView, ActivityIndicator, Button, ImageBackground } from 'react-native';
 import { firestore, auth } from '../services/firebase';
 import { BarChart } from 'react-native-chart-kit';
-import firebase from 'firebase/compat/app'; // Thêm dòng này nếu chưa có
+import { useFocusEffect } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import firebase from 'firebase/compat/app';
+import moment from 'moment';
+import { format, eachDayOfInterval } from 'date-fns';
 
 const StatisticsScreen = () => {
   const [data, setData] = useState([]);
+  const [taskStatusData, setTaskStatusData] = useState({});
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        if (!auth.currentUser) {
-          Alert.alert('Error', 'Bạn cần đăng nhập để xem thống kê.');
-          return;
+  const fetchData = async () => {
+    try {
+      if (!auth.currentUser) {
+        Alert.alert('Error', 'Bạn cần đăng nhập để xem thống kê.');
+        return;
+      }
+
+      const snapshot = await firestore.collection('users').doc(auth.currentUser.uid)
+        .collection('plans')
+        .where('startTime', '>=', firebase.firestore.Timestamp.fromDate(startDate))
+        .where('startTime', '<=', firebase.firestore.Timestamp.fromDate(endDate))
+        .get();
+
+      const plans = snapshot.docs.map(doc => doc.data());
+
+      let completedPlans = 0;
+      let pendingPlans = 0;
+
+      plans.forEach(plan => {
+        if (plan.status === 'completed') {
+          completedPlans += 1;
+        } else {
+          pendingPlans += 1;
         }
+      });
 
-        const snapshot = await firestore.collection('users').doc(auth.currentUser.uid)
-          .collection('plans')
-          .get();
+      setTaskStatusData({
+        labels: ['Hoàn thành', 'Chưa hoàn thành'],
+        datasets: [
+          {
+            data: [completedPlans, pendingPlans]
+          }
+        ]
+      });
 
-        const plans = snapshot.docs.map(doc => doc.data());
-        const weeksData = Array(4).fill(null).map(() => Array(7).fill(0)); // Mảng lưu thời gian học cho 4 tuần, mỗi tuần có 7 ngày
-        const weekRanges = []; // Mảng lưu khoảng thời gian của mỗi tuần
+      const intervalDays = eachDayOfInterval({ start: startDate, end: endDate });
+      const dayData = intervalDays.map(() => 0); 
 
+      intervalDays.forEach((day, index) => {
         plans.forEach(plan => {
-          if (plan.startTime && plan.endTime && 
-              plan.startTime instanceof firebase.firestore.Timestamp && 
-              plan.endTime instanceof firebase.firestore.Timestamp) {
-            const start = plan.startTime.toDate();
-            const end = plan.endTime.toDate();
-            const duration = (end - start) / (1000 * 60); // Chuyển đổi sang phút
-
-            const currentDate = new Date();
-            const startOfWeek = new Date(currentDate.setDate(currentDate.getDate() - currentDate.getDay()));
-            const weekIndex = Math.floor((startOfWeek - start) / (1000 * 60 * 60 * 24 * 7)); // Tính tuần
-
-            // Đảm bảo rằng chỉ số tuần không vượt quá phạm vi
-            if (weekIndex >= 0 && weekIndex < 4) {
-              const dayOfWeek = start.getDay(); // Lấy ngày trong tuần (0: Chủ Nhật, 1: Thứ Hai, ..., 6: Thứ Bảy)
-              weeksData[weekIndex][dayOfWeek] += duration; // Tăng thời gian học tại ngày tương ứng
-
-              // Tính khoảng thời gian của tuần
-              const weekStart = new Date(startOfWeek);
-              weekStart.setDate(weekStart.getDate() - weekIndex * 7);
-              const weekEnd = new Date(weekStart);
-              weekEnd.setDate(weekEnd.getDate() + 6);
-              
-              // Định dạng ngày tháng
-              const options = { year: 'numeric', month: 'numeric', day: 'numeric' };
-              weekRanges[weekIndex] = `${weekStart.toLocaleDateString('vi-VN', options)} - ${weekEnd.toLocaleDateString('vi-VN', options)}`;
+          if (plan.startTime && plan.endTime && plan.startTime.seconds && plan.endTime.seconds) {
+            const start = new Date(plan.startTime.seconds * 1000);
+            const end = new Date(plan.endTime.seconds * 1000);
+            const duration = (end - start) / (1000 * 60); 
+            if (start.toDateString() === day.toDateString()) {
+              dayData[index] += duration; 
             }
           } else {
             console.warn('startTime hoặc endTime không hợp lệ:', plan.startTime, plan.endTime);
           }
         });
+      });
 
-        // Cập nhật dữ liệu cho tất cả các tuần và đảo ngược thứ tự
-        setData(weeksData.map((weekData, index) => ({
-          labels: ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'],
-          datasets: [{ data: weekData }],
-          title: weekRanges[index] || `Khoảng thời gian ${index + 1}` // Đổi tên tiêu đề
-        })).reverse()); // Đảo ngược thứ tự ở đây
-      } catch (error) {
-        Alert.alert('Error', error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+      setData({
+        labels: intervalDays.map(day => format(day, 'dd')), 
+        datasets: [{ data: dayData }],
+        title: `Từ ${format(startDate, 'dd/MM/yyyy')} đến ${format(endDate, 'dd/MM/yyyy')}`
+      });
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchData();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      setLoading(true);
+      fetchData();
+    }, [startDate, endDate])
+  );
+
+  const handleStartDateChange = (event, date) => {
+    setShowStartDatePicker(false);
+    if (date) {
+      setStartDate(date);
+    }
+  };
+
+  const handleEndDateChange = (event, date) => {
+    setShowEndDatePicker(false);
+    if (date) {
+      setEndDate(date);
+    }
+  };
+
+  const showStartPicker = () => {
+    setShowStartDatePicker(true);
+  };
+
+  const showEndPicker = () => {
+    setShowEndDatePicker(true);
+  };
 
   if (loading) {
     return (
@@ -81,14 +120,49 @@ const StatisticsScreen = () => {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Thống Kê Thời Gian Học</Text>
-      {data.length > 0 ? (
-        data.map((weekData, index) => (
-          <View key={index} style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>{weekData.title}</Text>
+    <ImageBackground source={require('../assets/background.png')} style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Text style={styles.title}>Thống Kê Thời Gian Học</Text>
+        {data.datasets && data.datasets.length > 0 ? (
+          <View style={styles.chartContainer}>
+            <Text style={styles.chartTitle}>{data.title}</Text>
             <BarChart
-              data={weekData}
+              data={data}
+              width={Dimensions.get('window').width - 40}
+              height={220}
+              yAxisLabel="Phút"
+              xLabelsOffset={10}
+              chartConfig={{
+                backgroundColor: '#fff',
+                backgroundGradientFrom: '#fff',
+                backgroundGradientTo: '#fff',
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(0, 123, 255, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: '6',
+                  strokeWidth: '2',
+                  stroke: '#007BFF'
+                }
+              }}
+              style={{
+                marginVertical: 8,
+                borderRadius: 16
+              }}
+              fromZero={true} 
+            />
+          </View>
+        ) : (
+          <Text>Không có dữ liệu thống kê cho khoảng thời gian này.</Text>
+        )}
+        <Text style={styles.title}>Thống Kê Kế Hoạch</Text>
+        {taskStatusData.datasets && taskStatusData.datasets.length > 0 ? (
+          <View style={styles.chartContainer}>
+            <BarChart
+              data={taskStatusData}
               width={Dimensions.get('window').width - 40}
               height={220}
               yAxisLabel=""
@@ -99,26 +173,63 @@ const StatisticsScreen = () => {
                 decimalPlaces: 0,
                 color: (opacity = 1) => `rgba(0, 123, 255, ${opacity})`,
                 labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                style: { borderRadius: 16 },
-                propsForDots: { r: '6', strokeWidth: '2', stroke: '#007BFF' },
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: '6',
+                  strokeWidth: '2',
+                  stroke: '#007BFF'
+                }
               }}
-              style={{ marginVertical: 8, borderRadius: 16 }}
+              style={{
+                marginVertical: 8,
+                borderRadius: 16
+              }}
+              fromZero={true}
             />
           </View>
-        ))
-      ) : (
-        <Text>Không có dữ liệu thống kê.</Text>
-      )}
-    </ScrollView>
+        ) : (
+          <Text>Không có dữ liệu thống kê cho khoảng thời gian này.</Text>
+        )}
+      </ScrollView>
+      <View style={styles.buttonContainer}>
+        <Button title="Chọn Ngày Bắt Đầu" onPress={showStartPicker} color="#007BFF" />
+        {showStartDatePicker && (
+          <DateTimePicker
+            value={startDate}
+            mode="date"
+            display="default"
+            onChange={handleStartDateChange}
+          />
+        )}
+        <Button title="Chọn Ngày Kết Thúc" onPress={showEndPicker} color="#007BFF" />
+        {showEndDatePicker && (
+          <DateTimePicker
+            value={endDate}
+            mode="date"
+            display="default"
+            onChange={handleEndDateChange}
+          />
+        )}
+      </View>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollContainer: { padding: 20 },
   title: { fontSize: 20, marginBottom: 20, textAlign: 'center' },
   chartContainer: { marginBottom: 20, alignItems: 'center' },
   chartTitle: { fontSize: 18, marginBottom: 10 },
+  buttonContainer: {
+    marginTop: 'auto',
+    padding: 20,
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
 });
 
 export default StatisticsScreen;

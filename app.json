@@ -11,17 +11,37 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
-    },
+"ios": {
+  "supportsTablet": true,
+  "bundleIdentifier": "com.yourcompany.quanlythoigianhoctap",
+  "config": {
+    "usesNonExemptEncryption": false
+  },
+  "newArchEnabled": true
+},
+"android": {
+  "adaptiveIcon": {
+    "foregroundImage": "./assets/adaptive-icon.png",
+    "backgroundColor": "#ffffff"
+  },
+  "package": "com.yourcompany.quanlythoigianhoctap",
+  "newArchEnabled": true
+},
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "scheme": "quanlythoigianhoctap",
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ],
+    "extra": {
+
     }
   }
 }
